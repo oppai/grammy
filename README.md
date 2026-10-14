@@ -4,6 +4,8 @@ English | [日本語](README.ja.md)
 
 A native macOS app (Swift / AppKit + SwiftUI) that watches text fields in apps like Slack. When you pause after typing English, an LLM suggests corrections in a popup next to the caret, IME-style.
 
+![Grammy suggesting grammar corrections beside a text field](Resources/suggestion-preview.png)
+
 ## How it works
 
 ```
@@ -16,6 +18,7 @@ TextReplacer <-- apply (⌃⌥↩ / button) -- SuggestionPanel <-- LiteLLMClient
 - **Reading input**: Reads the value of the focused text field in the frontmost app through `AXUIElement`. Slack is built on Electron, so Grammy sets `AXManualAccessibility` to make it expose its accessibility tree. Password fields (`AXSecureTextField`) are never read.
 - **Checking**: Only English-looking text is sent. The model replies with JSON matching a schema: `{has_issues, corrected_text, issues[]}`. Explanations are written in Japanese, since the prompt targets Japanese speakers writing in English.
   - OpenAI-compatible (default): sends to the configured endpoint (default `https://api.openai.com/v1/chat/completions`; for a LiteLLM proxy, something like `http://localhost:4000/v1/chat/completions`) with `response_format: json_schema`
+    - For LM Studio, enter `http://localhost:1234` and select a chat model from the model list. Grammy adds `/v1/chat/completions` to a server URL. If a reasoning model leaves `content` empty, Grammy retries with `reasoning_effort: none`.
   - Anthropic API (direct): Messages API with `output_config.format`
 - **Display**: Shows a word-level diff and the list of issues in a non-activating `NSPanel` at the caret position (`AXBoundsForRange`), so keyboard focus stays in Slack.
 - **Applying**: Press `⌃⌥↩` or click the button. In Electron apps Grammy selects all and pastes, then restores your clipboard.

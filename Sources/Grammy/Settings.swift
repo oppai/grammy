@@ -122,10 +122,7 @@ final class AppSettings: ObservableObject {
     }
 
     func litellmEndpoint() throws -> URL {
-        guard let url = URL(string: litellmURL.trimmingCharacters(in: .whitespaces)), url.scheme == "https" else {
-            throw CheckError.invalidResponse("エンドポイント URL が不正です: \(litellmURL)")
-        }
-        return url
+        try LiteLLMClient.chatURL(from: litellmURL)
     }
 }
 

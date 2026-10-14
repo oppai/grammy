@@ -16,6 +16,7 @@ TextReplacer <-- 適用 (⌃⌥↩ / ボタン) -- SuggestionPanel <-- LiteLLMCl
 - **入力の取得**: `AXUIElement` でフロントアプリのフォーカス中テキスト欄の値を読む。Slack は Electron 製なので `AXManualAccessibility` を有効化してアクセシビリティツリーを出させている。パスワード欄 (`AXSecureTextField`) は読まない。
 - **チェック**: 英語らしいテキストだけを送り、JSON Schema で `{has_issues, corrected_text, issues[]}` を受け取る。解説は日本語。
   - OpenAI 互換（既定）: 設定したエンドポイント（既定 `https://api.openai.com/v1/chat/completions`。LiteLLM プロキシなら `http://localhost:4000/v1/chat/completions` など）に `response_format: json_schema` で送信
+    - LM Studio は `http://localhost:1234` を指定してモデル一覧からチャット用モデルを選ぶ。サーバー URL から `/v1/chat/completions` を自動補完する。一部の推論モデルが回答を `reasoning_content` に入れて `content` を空にした場合は、`reasoning_effort: none` で再試行する。
   - Anthropic API 直接: Messages API + `output_config.format`
 - **表示**: キャレット位置 (`AXBoundsForRange`) に、アクティブ化しない `NSPanel` で単語単位の差分と指摘一覧を表示するので、フォーカスは Slack に残る。
 - **適用**: `⌃⌥↩` またはボタンで適用。Electron アプリでは全選択してペーストし、クリップボードは元に戻す。

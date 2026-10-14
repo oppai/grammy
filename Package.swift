@@ -14,5 +14,6 @@ let package = Package(
                 .linkedFramework("Carbon"),
             ]
         ),
+        .testTarget(name: "GrammyTests", dependencies: ["Grammy"]),
     ]
 )
