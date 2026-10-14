@@ -8,6 +8,10 @@ final class LiteLLMClient: GrammarChecker {
 
     /// Models (per proxy URL) that rejected `reasoning_effort`; remembered for the app's lifetime.
     private static var effortUnsupported = Set<String>()
+    /// Some local servers put the entire answer in reasoning_content for `low`.
+    private static var noReasoningRequired = Set<String>()
+
+    private enum EmptyContent: Error { case response }
 
     init(endpoint: URL, model: String, apiKey: String) {
         self.endpoint = endpoint
@@ -17,18 +21,37 @@ final class LiteLLMClient: GrammarChecker {
 
     func check(text: String) async throws -> GrammarResult {
         let key = endpoint.absoluteString + "|" + model
-        guard !Self.effortUnsupported.contains(key) else { return try await send(text: text, lowEffort: false) }
         do {
-            // Grammar fixes don't need deep reasoning; low effort cuts latency substantially.
-            return try await send(text: text, lowEffort: true)
-        } catch CheckError.http(400, let message) {
-            Log.check.info("reasoning_effort rejected, retrying without: \(message, privacy: .public)")
-            Self.effortUnsupported.insert(key)
-            return try await send(text: text, lowEffort: false)
+            if Self.noReasoningRequired.contains(key) {
+                return try await send(text: text, reasoningEffort: "none")
+            }
+            if Self.effortUnsupported.contains(key) {
+                return try await send(text: text, reasoningEffort: nil)
+            }
+            do {
+                // Grammar fixes don't need deep reasoning; low effort cuts latency substantially.
+                return try await send(text: text, reasoningEffort: "low")
+            } catch EmptyContent.response {
+                // LM Studio may put a structured reply only in reasoning_content.
+                // Request a final answer in content rather than treating reasoning as output.
+                do {
+                    let result = try await send(text: text, reasoningEffort: "none")
+                    Self.noReasoningRequired.insert(key)
+                    return result
+                } catch CheckError.http(400, _) {
+                    return try await send(text: text, reasoningEffort: nil)
+                }
+            } catch CheckError.http(400, let message) {
+                Log.check.info("reasoning_effort rejected, retrying without: \(message, privacy: .public)")
+                Self.effortUnsupported.insert(key)
+                return try await send(text: text, reasoningEffort: nil)
+            }
+        } catch EmptyContent.response {
+            throw CheckError.invalidResponse("モデルの回答（content）が空です。モデル設定を確認してください。")
         }
     }
 
-    private func send(text: String, lowEffort: Bool) async throws -> GrammarResult {
+    private func send(text: String, reasoningEffort: String?) async throws -> GrammarResult {
         var body: [String: Any] = [
             "model": model,
             "max_completion_tokens": 8000,
@@ -42,7 +65,7 @@ final class LiteLLMClient: GrammarChecker {
                 "json_schema": ["name": "grammar_result", "schema": GrammarPrompt.schema, "strict": true],
             ],
         ]
-        if lowEffort { body["reasoning_effort"] = "low" }
+        if let reasoningEffort { body["reasoning_effort"] = reasoningEffort }
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -67,8 +90,9 @@ final class LiteLLMClient: GrammarChecker {
         case "length": throw CheckError.truncated
         default: break
         }
-        guard let content = choice.message.content else {
-            throw CheckError.invalidResponse("content がありません")
+        guard let content = choice.message.content,
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw EmptyContent.response
         }
         return try GrammarResult.decode(fromReply: Self.stripCodeFence(content))
     }
@@ -87,6 +111,27 @@ final class LiteLLMClient: GrammarChecker {
         }
         let list = try JSONDecoder().decode(ModelList.self, from: data)
         return Array(Set(list.data.map(\.id))).sorted()
+    }
+
+    /// Accept a full endpoint or an HTTP(S) server URL, including local servers.
+    static func chatURL(from input: String) throws -> URL {
+        guard var components = URLComponents(string: input.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil else {
+            throw CheckError.invalidResponse("エンドポイントには http:// または https:// で始まる URL を指定してください。")
+        }
+        components.scheme = scheme
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if path.isEmpty {
+            components.path = "/v1/chat/completions"
+        } else if path == "v1" || path.hasSuffix("/v1") {
+            components.path = "/" + path + "/chat/completions"
+        }
+        guard let url = components.url else {
+            throw CheckError.invalidResponse("エンドポイント URL が不正です。")
+        }
+        return url
     }
 
     /// ".../v1/chat/completions" → ".../v1/models"

@@ -28,7 +28,7 @@ struct SettingsView: View {
                         Button("既定に戻す") { settings.litellmURL = AppSettings.defaultLiteLLMURL }
                             .disabled(settings.litellmURL == AppSettings.defaultLiteLLMURL)
                     }
-                    Text("OpenAI 互換の /v1/chat/completions なら何でも指定できます（例: LiteLLM プロキシ）。既定は OpenAI です。")
+                    Text("OpenAI 互換の URL を指定します。LM Studio は http://localhost:1234（/v1/chat/completions は自動補完）。既定は OpenAI です。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack {
